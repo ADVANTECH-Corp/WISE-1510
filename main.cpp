@@ -12,7 +12,7 @@
 #include "mbed.h"
 #include "node_api.h"
 
-#define WISE_VERSION	            "1510-MM-X0102-Standard"
+#define WISE_VERSION	            "1510-MM-X0103-Standard"
 #define NODE_AUTOGEN_APPKEY
 
 #define NODE_SENSOR_TEMP_HUM_ENABLE 1  ///< Enable or disable TEMP/HUM sensor report, default disable
