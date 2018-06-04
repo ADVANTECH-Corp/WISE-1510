@@ -189,6 +189,7 @@ uint8_t SetSysClock_PLL_HSE(uint8_t bypass)
     } else {
         RCC_OscInitStruct.HSEState            = RCC_HSE_BYPASS; // External 8 MHz clock on OSC_IN
     }
+  RCC_OscInitStruct.HSI48State = RCC_HSI48_ON;
     RCC_OscInitStruct.HSIState              = RCC_HSI_OFF;
     RCC_OscInitStruct.PLL.PLLSource         = RCC_PLLSOURCE_HSE; // 8 MHz
     RCC_OscInitStruct.PLL.PLLState          = RCC_PLL_ON;
@@ -196,7 +197,7 @@ uint8_t SetSysClock_PLL_HSE(uint8_t bypass)
     RCC_OscInitStruct.PLL.PLLN              = 32;//20; // VCO output clock = 160 MHz (8 MHz * 20)
     RCC_OscInitStruct.PLL.PLLP              = 7; // PLLSAI3 clock = 22 MHz (160 MHz / 7)
     RCC_OscInitStruct.PLL.PLLQ              = 2;
-    RCC_OscInitStruct.PLL.PLLR              = 4; // PLL clock = 80 MHz (160 MHz / 2)
+    RCC_OscInitStruct.PLL.PLLR              =2; // PLL clock = 80 MHz (160 MHz / 2)
 
     if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
         return 0; // FAIL
