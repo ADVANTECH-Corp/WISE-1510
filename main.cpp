@@ -12,26 +12,35 @@
 #include "mbed.h"
 #include "node_api.h"
 
-#define WISE_VERSION	            "1510-MM-X0102-Standard"
+#define WISE_VERSION	            "1510-MM-X0102-VJ-PowerConsumption"
 #define NODE_AUTOGEN_APPKEY
 
 #define NODE_SENSOR_TEMP_HUM_ENABLE 1  ///< Enable or disable TEMP/HUM sensor report, default disable
 #define NODE_SENSOR_CO2_VOC_ENABLE 0  ///< Enable or disable CO2/VOC sensor report, default disable
-#define NODE_GPIO_ENABLE 1  ///< Enable or disable GPIO report, default enable
+#define NODE_GPIO_ENABLE 0  ///< Enable or disable GPIO report, default enable
 
 #define NODE_DEBUG(x,args...) node_printf_to_serial(x,##args)
 
-#define NODE_DEEP_SLEEP_MODE_SUPPORT 0  ///< Flag to Enable/Disable deep sleep mode
+#define NODE_DEEP_SLEEP_MODE_SUPPORT 1///< Flag to Enable/Disable deep sleep mode
 #define NODE_ACTIVE_PERIOD_IN_SEC 10    ///< Period time to read/send sensor data  >= 3sec
 #define NODE_RXWINDOW_PERIOD_IN_SEC 4    ///< Rx windown time  
 #define NODE_ACTIVE_TX_PORT 1          ///< Lora Port to send data
 
 RawSerial debug_serial(PA_9, PA_10);	///< Debug serial port
 
+DigitalIn gp2(PC_8);
+DigitalIn gp3(PC_7);
+DigitalIn gp4(PC_5);
+DigitalIn gp5(PB_0);
+DigitalIn gp6(PA_2);
+DigitalIn gp7(PA_3);
+DigitalIn gp8(PB_6);				
 #if NODE_GPIO_ENABLE
 ///< Control downlink GPIO0
 static DigitalOut led(PA_8);
 static unsigned int gpio0;
+#else
+DigitalIn gp1(PA_8);	 
 #endif
 
 typedef enum
@@ -257,7 +266,7 @@ void node_set_config()
 		
 	strcpy(devaddr,&deveui[8]);
 	nodeApiSetDevAddr(devaddr);
-	nodeApiSetSpsConf("1");
+	//nodeApiSetSpsConf("1");
 	//sprintf(appkey,"%s%s",deveui,deveui);		
 	//nodeApiSetAppKey(appkey);	
 	
@@ -266,9 +275,9 @@ void node_set_config()
 	//nodeApiSetAppKey("00000000000000000000000000000011");
 	//nodeApiSetNwkSKey("00000000000000000000000000000011");
 	//nodeApiSetAppSKey("00000000000000000000000000000011");
-	//nodeApiSetDevActMode("2");
-	//nodeApiSetDevOpMode("1");
-	//nodeApiSetDevClass("3");
+	nodeApiSetDevActMode("2");
+	nodeApiSetDevOpMode("1");
+	nodeApiSetDevClass("1");
 	//nodeApiSetDevAdvwiseDataRate("4");
 	//nodeApiSetDevAdvwiseFreq("923300000");
 	//nodeApiSetDevAdvwiseTxPwr("20");
@@ -505,8 +514,8 @@ void node_state_loop()
 				{
 					time_t seconds = time(NULL);
 	        
-					NODE_DEBUG("Time as seconds since January 1, 1970 = %d\r\n", seconds);
-					NODE_DEBUG("Time as a basic string = %s\r\n", ctime(&seconds));
+					NODE_DEBUG("Time as seconds since January 1, 1970 = %d\n", seconds);
+					NODE_DEBUG("Time as a basic string = %s", ctime(&seconds));
 					
 				}
      
