@@ -493,11 +493,7 @@ void node_state_loop()
 			if(join_state==2)
 				NODE_DEBUG("LoRa is not joined.\r\n");	
 
-			#if NODE_DEEP_SLEEP_MODE_SUPPORT
-			nodeApiSetDevSleepRTCWakeup(1);
-			#else
 			Thread::wait(1000);
-			#endif
 			
 			join_state=1;
 			continue;
