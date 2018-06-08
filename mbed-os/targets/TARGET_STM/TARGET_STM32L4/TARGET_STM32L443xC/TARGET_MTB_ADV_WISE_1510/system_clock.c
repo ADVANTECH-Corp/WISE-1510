@@ -183,12 +183,13 @@ uint8_t SetSysClock_PLL_HSE(uint8_t bypass)
 
     // Enable HSE oscillator and activate PLL with HSE as source
     //RCC_OscInitStruct.OscillatorType        = RCC_OSCILLATORTYPE_HSE | RCC_OSCILLATORTYPE_HSI;
-	RCC_OscInitStruct.OscillatorType        = RCC_OSCILLATORTYPE_HSE | RCC_OSCILLATORTYPE_HSI48;
+	RCC_OscInitStruct.OscillatorType          = RCC_OSCILLATORTYPE_HSE | RCC_OSCILLATORTYPE_HSI48;
     if (bypass == 0) {
         RCC_OscInitStruct.HSEState            = RCC_HSE_ON; // External 8 MHz xtal on OSC_IN/OSC_OUT
     } else {
         RCC_OscInitStruct.HSEState            = RCC_HSE_BYPASS; // External 8 MHz clock on OSC_IN
     }
+	RCC_OscInitStruct.HSI48State 			= RCC_HSI48_ON;
     RCC_OscInitStruct.HSIState              = RCC_HSI_OFF;
     RCC_OscInitStruct.PLL.PLLSource         = RCC_PLLSOURCE_HSE; // 8 MHz
     RCC_OscInitStruct.PLL.PLLState          = RCC_PLL_ON;
@@ -196,7 +197,7 @@ uint8_t SetSysClock_PLL_HSE(uint8_t bypass)
     RCC_OscInitStruct.PLL.PLLN              = 32;//20; // VCO output clock = 160 MHz (8 MHz * 20)
     RCC_OscInitStruct.PLL.PLLP              = 7; // PLLSAI3 clock = 22 MHz (160 MHz / 7)
     RCC_OscInitStruct.PLL.PLLQ              = 2;
-    RCC_OscInitStruct.PLL.PLLR              = 4; // PLL clock = 80 MHz (160 MHz / 2)
+    RCC_OscInitStruct.PLL.PLLR              = 2; // PLL clock = 80 MHz (160 MHz / 2)
 
     if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
         return 0; // FAIL
@@ -232,6 +233,15 @@ uint8_t SetSysClock_PLL_HSE(uint8_t bypass)
     RCC_OscInitStruct.MSIState       = RCC_MSI_OFF;
     RCC_OscInitStruct.PLL.PLLState   = RCC_PLL_NONE; // No PLL update
     HAL_RCC_OscConfig(&RCC_OscInitStruct);
+	
+	// if reinitialise the clock need, 20180607,Charles
+	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSI  | RCC_OSCILLATORTYPE_LSE; 
+	RCC_OscInitStruct.PLL.PLLState   = RCC_PLL_NONE; // Mandatory, otherwise the PLL is reconfigured!
+	RCC_OscInitStruct.LSEState       = RCC_LSE_OFF;
+	RCC_OscInitStruct.LSIState       = RCC_LSI_ON;
+	if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
+        error("Cannot initialize RTC with LSI\n");
+	} 
 
     // Output clock on MCO1 pin(PA8) for debugging purpose
 #if DEBUG_MCO == 2

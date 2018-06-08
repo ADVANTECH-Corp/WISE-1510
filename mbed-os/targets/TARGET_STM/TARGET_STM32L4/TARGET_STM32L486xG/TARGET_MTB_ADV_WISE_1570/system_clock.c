@@ -1,45 +1,32 @@
+/* mbed Microcontroller Library
+* Copyright (c) 2006-2017 ARM Limited
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
+
 /**
-  ******************************************************************************
-  * @file    system_stm32l4xx.c
-  * @author  MCD Application Team
-  * @version V1.3.1
-  * @date    21-April-2017
-  * @brief   CMSIS Cortex-M4 Device Peripheral Access Layer System Source File
-  *
-  *   This file provides two functions and one global variable to be called from
-  *   user application:
-  *      - SystemInit(): This function is called at startup just after reset and
-  *                      before branch to main program. This call is made inside
-  *                      the "startup_stm32l4xx.s" file.
-  *
-  *      - SystemCoreClock variable: Contains the core clock (HCLK), it can be used
-  *                                  by the user application to setup the SysTick
-  *                                  timer or configure other parameters.
-  *
-  *      - SystemCoreClockUpdate(): Updates the variable SystemCoreClock and must
-  *                                 be called whenever the core clock is changed
-  *                                 during program execution.
-  *
-  *   After each device reset the MSI (4 MHz) is used as system clock source.
-  *   Then SystemInit() function is called, in "startup_stm32l4xx.s" file, to
-  *   configure the system clock before to branch to main program.
-  *
-  *   This file configures the system clock as follows:
-  *=============================================================================
-  * System clock source                | 1- PLL_HSE_EXTC        | 3- PLL_HSI
-  *                                    | (external 8 MHz clock) | (internal 16 MHz)
-  *                                    | 2- PLL_HSE_XTAL        | or PLL_MSI
-  *                                    | (external 8 MHz xtal)  | (internal 4 MHz)
+  * This file configures the system clock as follows:
   *-----------------------------------------------------------------------------
-  * SYSCLK(MHz)                        | 48                     | 80
+  * System clock source | 1- USE_PLL_HSE_EXTC (external 8 MHz clock)
+  *                     | 2- USE_PLL_HSE_XTAL (external 8 MHz xtal)
+  *                     | 3- USE_PLL_HSI (internal 16 MHz)
+  *                     | 4- USE_PLL_MSI (internal 100kHz to 48 MHz)
   *-----------------------------------------------------------------------------
-  * AHBCLK (MHz)                       | 48                     | 80
-  *-----------------------------------------------------------------------------
-  * APB1CLK (MHz)                      | 48                     | 80
-  *-----------------------------------------------------------------------------
-  * APB2CLK (MHz)                      | 48                     | 80
-  *-----------------------------------------------------------------------------
-  * USB capable (48 MHz precise clock) | YES                    | NO
+  * SYSCLK(MHz)         | 80
+  * AHBCLK (MHz)        | 80
+  * APB1CLK (MHz)       | 80
+  * APB2CLK (MHz)       | 80
+  * USB capable         | YES
   *-----------------------------------------------------------------------------
 **/
 
@@ -110,7 +97,7 @@ void SystemInit(void)
 #ifdef VECT_TAB_SRAM
     SCB->VTOR = SRAM_BASE | VECT_TAB_OFFSET; /* Vector Table Relocation in Internal SRAM */
 #else
-    SCB->VTOR = NVIC_FLASH_VECTOR_ADDRESS; /* Vector Table Relocation in Internal FLASH */
+    SCB->VTOR = FLASH_BASE | VECT_TAB_OFFSET; /* Vector Table Relocation in Internal FLASH */
 #endif
 
 }
@@ -183,18 +170,18 @@ uint8_t SetSysClock_PLL_HSE(uint8_t bypass)
 
     // Enable HSE oscillator and activate PLL with HSE as source
     //RCC_OscInitStruct.OscillatorType        = RCC_OSCILLATORTYPE_HSE | RCC_OSCILLATORTYPE_HSI;
-	RCC_OscInitStruct.OscillatorType          = RCC_OSCILLATORTYPE_HSE | RCC_OSCILLATORTYPE_HSI48;
+    RCC_OscInitStruct.OscillatorType        = RCC_OSCILLATORTYPE_HSE | RCC_OSCILLATORTYPE_LSE | RCC_OSCILLATORTYPE_HSI;
     if (bypass == 0) {
-        RCC_OscInitStruct.HSEState            = RCC_HSE_ON; // External 8 MHz xtal on OSC_IN/OSC_OUT
+        RCC_OscInitStruct.HSEState          = RCC_HSE_ON; // External 8 MHz xtal on OSC_IN/OSC_OUT
+        RCC_OscInitStruct.LSEState          = RCC_LSE_ON;
     } else {
-        RCC_OscInitStruct.HSEState            = RCC_HSE_BYPASS; // External 8 MHz clock on OSC_IN
+        RCC_OscInitStruct.HSEState          = RCC_HSE_BYPASS; // External 8 MHz clock on OSC_IN
     }
-	RCC_OscInitStruct.HSI48State 			= RCC_HSI48_ON;
     RCC_OscInitStruct.HSIState              = RCC_HSI_OFF;
     RCC_OscInitStruct.PLL.PLLSource         = RCC_PLLSOURCE_HSE; // 8 MHz
     RCC_OscInitStruct.PLL.PLLState          = RCC_PLL_ON;
-    RCC_OscInitStruct.PLL.PLLM              = 5;//1; // VCO input clock = 8 MHz (8 MHz / 1)
-    RCC_OscInitStruct.PLL.PLLN              = 32;//20; // VCO output clock = 160 MHz (8 MHz * 20)
+    RCC_OscInitStruct.PLL.PLLM              = 1; // VCO input clock = 8 MHz (8 MHz / 1)
+    RCC_OscInitStruct.PLL.PLLN              = 20; // VCO output clock = 160 MHz (8 MHz * 20)
     RCC_OscInitStruct.PLL.PLLP              = 7; // PLLSAI3 clock = 22 MHz (160 MHz / 7)
     RCC_OscInitStruct.PLL.PLLQ              = 2;
     RCC_OscInitStruct.PLL.PLLR              = 2; // PLL clock = 80 MHz (160 MHz / 2)
@@ -203,7 +190,6 @@ uint8_t SetSysClock_PLL_HSE(uint8_t bypass)
         return 0; // FAIL
     }
 
-	
     // Select PLL clock as system clock source and configure the HCLK, PCLK1 and PCLK2 clocks dividers
     RCC_ClkInitStruct.ClockType      = (RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2);
     RCC_ClkInitStruct.SYSCLKSource   = RCC_SYSCLKSOURCE_PLLCLK; // 80 MHz or 48 MHz
@@ -214,9 +200,9 @@ uint8_t SetSysClock_PLL_HSE(uint8_t bypass)
         return 0; // FAIL
     }
 
+#if 0
     RCC_PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USB;
-   // RCC_PeriphClkInit.UsbClockSelection = RCC_USBCLKSOURCE_PLLSAI1;//PLLSAI1 not config suitable,system hang
-	RCC_PeriphClkInit.UsbClockSelection = RCC_USBCLKSOURCE_HSI48;
+    RCC_PeriphClkInit.UsbClockSelection = RCC_USBCLKSOURCE_PLLSAI1;
     RCC_PeriphClkInit.PLLSAI1.PLLSAI1Source = RCC_PLLSOURCE_HSE;
     RCC_PeriphClkInit.PLLSAI1.PLLSAI1M = 1;
     RCC_PeriphClkInit.PLLSAI1.PLLSAI1N = 12;
@@ -227,21 +213,21 @@ uint8_t SetSysClock_PLL_HSE(uint8_t bypass)
     if (HAL_RCCEx_PeriphCLKConfig(&RCC_PeriphClkInit) != HAL_OK) {
         return 0; // FAIL
     }
+#endif
+    
+    // Select LSE output as LPUART1 clock source
+    RCC_PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_RTC | RCC_PERIPHCLK_LPUART1;
+    RCC_PeriphClkInit.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_LSE;
+    RCC_PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSE;
+    if (HAL_RCCEx_PeriphCLKConfig(&RCC_PeriphClkInit) != HAL_OK) {
+        return 0; // FAIL
+    }
 
     // Disable MSI Oscillator
     RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_MSI;
     RCC_OscInitStruct.MSIState       = RCC_MSI_OFF;
     RCC_OscInitStruct.PLL.PLLState   = RCC_PLL_NONE; // No PLL update
     HAL_RCC_OscConfig(&RCC_OscInitStruct);
-	
-	// if reinitialise the clock need, 20180607,Charles
-	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSI  | RCC_OSCILLATORTYPE_LSE; 
-	RCC_OscInitStruct.PLL.PLLState   = RCC_PLL_NONE; // Mandatory, otherwise the PLL is reconfigured!
-	RCC_OscInitStruct.LSEState       = RCC_LSE_OFF;
-	RCC_OscInitStruct.LSIState       = RCC_LSI_ON;
-	if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
-        error("Cannot initialize RTC with LSI\n");
-	} 
 
     // Output clock on MCO1 pin(PA8) for debugging purpose
 #if DEBUG_MCO == 2
