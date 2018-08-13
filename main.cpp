@@ -12,12 +12,11 @@
 #include "mbed.h"
 #include "node_api.h"
 
-#define WISE_VERSION	            "1510-MM-X0102-Standard"
+#define WISE_VERSION	            "WISE-1510 v0.1.01"
 #define NODE_AUTOGEN_APPKEY
 
 #define NODE_SENSOR_TEMP_HUM_ENABLE 1  ///< Enable or disable TEMP/HUM sensor report, default disable
 #define NODE_SENSOR_CO2_VOC_ENABLE 0  ///< Enable or disable CO2/VOC sensor report, default disable
-#define NODE_GPIO_ENABLE 1  ///< Enable or disable GPIO report, default enable
 
 #define NODE_DEBUG(x,args...) node_printf_to_serial(x,##args)
 
@@ -26,12 +25,22 @@
 #define NODE_RXWINDOW_PERIOD_IN_SEC 4    ///< Rx windown time  
 #define NODE_ACTIVE_TX_PORT 1          ///< Lora Port to send data
 
+#if NODE_DEEP_SLEEP_MODE_SUPPORT
+#define NODE_GPIO_ENABLE 0  ///< Disable GPIO report for deep sleep 
+static DigitalOut *p_lpin;
+#else
+#define NODE_GPIO_ENABLE 1  ///< Enable or disable GPIO report
+#endif
+
 RawSerial debug_serial(PA_9, PA_10);	///< Debug serial port
 
+
 #if NODE_GPIO_ENABLE
-///< Control downlink GPIO0
-static DigitalOut led(PA_8);
+///< Control downlink GPIO1
+static DigitalOut led(PC_8);//IO01
 static unsigned int gpio0;
+#else
+DigitalIn gp6(PC_8); ///PC8 consumes power if not declare
 #endif
 
 typedef enum
@@ -93,7 +102,18 @@ unsigned int iaq_core_sensor(void)
 {
 	static unsigned int vc = 0;
 	char data_read[9];
+	#if NODE_DEEP_SLEEP_MODE_SUPPORT
+	if(node_op_mode==4)
+	{
+		i2c.lock();
+		i2c.read(0xB5, data_read, 9, 1);
+		i2c.unlock();
+	}
+	else
+		i2c.read(0xB5, data_read, 9, 1);
+	#else
 	i2c.read(0xB5, data_read, 9, 1);
+	#endif
 	if(data_read[2]==0x0||data_read[2]==0x10)
 	{	
 		//NODE_DEBUG(" IAQ status: %x \n\r",  data_read[2]);
@@ -133,11 +153,30 @@ static unsigned int hdc1510_sensor(void)
 
 	#define HDC1510_REG_TEMP  0x0
 	#define HDC1510_ADDR 0x80
-
+	
 	data_write[0]=HDC1510_REG_TEMP;
+
+	#if NODE_DEEP_SLEEP_MODE_SUPPORT
+	if(node_op_mode==4)
+	{
+		i2c.lock();
+		i2c.write(HDC1510_ADDR, data_write, 1, 1); 
+		Thread::wait(50);
+		i2c.read(HDC1510_ADDR, data_read, 4, 0);
+		i2c.unlock();
+	}
+	else
+	{
+		i2c.write(HDC1510_ADDR, data_write, 1, 1); 
+		Thread::wait(50);
+		i2c.read(HDC1510_ADDR, data_read, 4, 0);
+	}
+	#else
 	i2c.write(HDC1510_ADDR, data_write, 1, 1); 
 	Thread::wait(50);
 	i2c.read(HDC1510_ADDR, data_read, 4, 0);
+	#endif
+	
 	float tempval = (float)((data_read[0] << 8 | data_read[1]) * 165.0 / 65536.0 - 40.0);
 
 	/*Temperature*/
@@ -204,7 +243,6 @@ int node_beacon_cb(unsigned char state, short rssi, signed char snr)
 			break;
 		case NODE_BCN_STATE_SPS:
 		//NODE_DEBUG("Beacon CB: SPS\r\n");	
-		
 			node_state=NODE_STATE_ACTIVE;
 			break;
 		case NODE_BCN_STATE_LOTTERY2:
@@ -406,7 +444,7 @@ unsigned char node_get_sensor_data (char *data)
 	sensor_data[len+2]=0x3;
 	len++;  // len:3 bytes	
 	sensor_data[len+2]=0x0;
-	len++; //0 is positive, 1 is negative
+	len++; //0x0 is positive, 0xff is negative
 	sensor_data[len+2]=(node_sensor_temp_hum>>8)&0xff;
 	len++; 
 	sensor_data[len+2]=node_sensor_temp_hum&0xff;
@@ -476,6 +514,7 @@ void node_state_loop()
 		NODE_DEBUG("WISE link 2.0 \r\n");	
 		nodeApiSetBeaconCb(node_beacon_cb);
 	}
+	
 
 	while(1)
 	{
@@ -484,11 +523,7 @@ void node_state_loop()
 			if(join_state==2)
 				NODE_DEBUG("LoRa is not joined.\r\n");	
 
-			#if NODE_DEEP_SLEEP_MODE_SUPPORT
-			nodeApiSetDevSleepRTCWakeup(1);
-			#else
 			Thread::wait(1000);
-			#endif
 			
 			join_state=1;
 			continue;
@@ -505,8 +540,8 @@ void node_state_loop()
 				{
 					time_t seconds = time(NULL);
 	        
-					NODE_DEBUG("Time as seconds since January 1, 1970 = %d\r\n", seconds);
-					NODE_DEBUG("Time as a basic string = %s\r\n", ctime(&seconds));
+					NODE_DEBUG("Time as seconds since January 1, 1970 = %d\n", seconds);
+					NODE_DEBUG("Time as a basic string = %s", ctime(&seconds));
 					
 				}
      
@@ -543,9 +578,11 @@ void node_state_loop()
 					else
 					{
 						#if NODE_DEEP_SLEEP_MODE_SUPPORT
-							nodeApiSetDevSleepRTCWakeup(NODE_ACTIVE_PERIOD_IN_SEC-NODE_RXWINDOW_PERIOD_IN_SEC);
+						*p_lpin=0;
+						nodeApiSetDevSleepRTCWakeup(NODE_ACTIVE_PERIOD_IN_SEC-NODE_RXWINDOW_PERIOD_IN_SEC);
+						*p_lpin=1;
 						#else
-							Thread::wait((NODE_ACTIVE_PERIOD_IN_SEC-NODE_RXWINDOW_PERIOD_IN_SEC)*1000);
+						Thread::wait((NODE_ACTIVE_PERIOD_IN_SEC-NODE_RXWINDOW_PERIOD_IN_SEC)*1000);
 						#endif
 						if(node_state==NODE_STATE_RX_DONE)
 							continue;
@@ -647,8 +684,6 @@ void node_state_loop()
 }
 
 
-
-
 /** @brief Main function
  */
 int main () 
@@ -682,7 +717,7 @@ int main ()
     	NODE_DEBUG("\n\r");
     	NODE_DEBUG("\t\t *************************************************\n\r");
 	node_show_version();
-	
+		
 	/*
 	 * Init configuration at beginning
 	 */
@@ -704,11 +739,23 @@ int main ()
 	/* Apply to module */
 	nodeApiApplyCfg();
 
+	node_get_config();	
+
+	#if NODE_DEEP_SLEEP_MODE_SUPPORT
+	if(node_op_mode==4)
+	{
+		nodeApiEnableExternalRTC(1,(void *)&i2c);
+	}
+	else if(node_op_mode==1)
+	{
+		p_lpin=new DigitalOut(PA_15,0);
+
+	}
+	#endif		
+		
 	/* Start Lora */
-	nodeApiStartLora();
-
-	node_get_config();
-
+	nodeApiStartLora();	
+		
 	Thread::wait(1000);
 
 	#if (!NODE_SENSOR_TEMP_HUM_ENABLE)

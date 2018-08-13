@@ -1,0 +1,6 @@
+rm -rf ./BUILD
+rm main.cpp
+rm .mbedignore
+rm build_info.txt
+rm M_R_V
+rm mbed-os/targets/targets.json
