@@ -836,17 +836,10 @@ int main ()
         
     Thread::wait(1000);
 
-    #if (!NODE_SENSOR_TEMP_HUM_ENABLE)
-    while(1)
-    {
-        Thread::wait(1000);
-    }   
-    #else
     /*
      *  Node state loop
      */
     node_state_loop();
-    #endif
 
     /*Never reach here*/    
     return 0;
