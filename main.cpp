@@ -12,7 +12,7 @@
 #include "mbed.h"
 #include "node_api.h"
 
-#define WISE_VERSION                  "1510-MMX0103-Standard"
+#define WISE_VERSION                  "1510-MMX0103-Hyundai"
 #define NODE_AUTOGEN_APPKEY
 
 #define NODE_SENSOR_TEMP_HUM_ENABLE    1    ///< Enable or disable TEMP/HUM sensor report, default disable
@@ -20,11 +20,11 @@
 
 #define NODE_DEBUG(x,args...) node_printf_to_serial(x,##args)
 
-#define NODE_DEEP_SLEEP_MODE_SUPPORT   1    ///< Flag to Enable/Disable deep sleep mode
+#define NODE_DEEP_SLEEP_MODE_SUPPORT   0    ///< Flag to Enable/Disable deep sleep mode
 #define NODE_ACTIVE_PERIOD_IN_SEC     10    ///< Period time to read/send sensor data  >= 3sec
 #define NODE_RXWINDOW_PERIOD_IN_SEC    4    ///< Rx windown time  
 #define NODE_ACTIVE_TX_PORT            1    ///< Lora Port to send data
-
+#define NODE_SENSOR_CT  1
 
 #if NODE_DEEP_SLEEP_MODE_SUPPORT
 #define NODE_GPIO_ENABLE               0   ///< Disable GPIO report for deep sleep 
@@ -37,11 +37,20 @@ RawSerial debug_serial(PA_9, PA_10);      ///< Debug serial port
 
 
 #if NODE_GPIO_ENABLE
-///< Control downlink GPIO1
-static DigitalOut led(PC_8);//IO01
-static unsigned int gpio0;
+///< Control downlink GPIO
+static DigitalOut g_gpio4(PB_0);
+static DigitalOut g_gpio3(PC_5);
+static DigitalOut g_gpio8_pwm0(PA_5);
+static unsigned int ui_Gpio4Status = 0;
+static unsigned int ui_Gpio3Status = 0;
+static unsigned int ui_Gpio8Status = 0;
 #else
 DigitalIn gp6(PC_8); ///PC8 consumes power if not declare
+#endif
+
+#if NODE_SENSOR_CT
+static AnalogIn g_adc0(PA_7);
+static AnalogIn g_adc2(PA_6);
 #endif
 
 typedef enum
@@ -66,6 +75,10 @@ static unsigned int  node_sensor_temp_hum=0; ///<Temperature and humidity sensor
 #endif
 #if NODE_SENSOR_CO2_VOC_ENABLE
 static  unsigned int node_sensor_voc_co2=0; ///<Voc and CO2 sensor global
+#endif
+#if NODE_SENSOR_CT
+static  unsigned int node_sensor_adc0=0;
+static  unsigned int node_sensor_adc2=0;
 #endif
 
 I2C i2c(PC_1, PC_0); ///<i2C define
@@ -202,6 +215,32 @@ static void node_sensor_temp_hum_thread(void const *args)
         Thread::wait(1000);
         node_sensor_temp_hum=(unsigned int )hdc1510_sensor();
     }
+}
+#endif
+
+#if NODE_SENSOR_CT
+static void node_sensor_adc_thread(void const *args)
+{
+        int cnt=0;
+        float f0, f2;
+
+        while(1)
+        {
+            cnt++;
+            Thread::wait(10);
+            if(cnt==100)
+            {
+                cnt=0;
+                f0 = g_adc0.read()*3.3;
+                f2 = g_adc2.read()*3.3;
+                //NODE_DEBUG("adc0 read:%f, %f\n\r", f0, f0 * 1000);
+                //NODE_DEBUG("adc2 read:%f, %f\n\r", f2, f2 * 1000);
+                node_sensor_adc0 = f0 * 1000;
+                node_sensor_adc2 = f2 * 1000;
+                NODE_DEBUG("node_sensor_adc0:%d\n\r", node_sensor_adc0);
+                NODE_DEBUG("node_sensor_adc2:%d\n\r", node_sensor_adc2);
+             }
+        }
 }
 #endif
 
@@ -482,11 +521,45 @@ unsigned char node_get_sensor_data (char *data)
     len++;  // GPIO
     sensor_data[len+2]=0x1;
     len++; // len:1 bytes
-    sensor_data[len+2]=gpio0;
+    sensor_data[len+2]=ui_Gpio3Status;
+    len++;
+    sensor_data[len+2]=0x6;
+    len++;  // GPIO
+    sensor_data[len+2]=0x1;
+    len++; // len:1 bytes
+    sensor_data[len+2]=ui_Gpio4Status;
+    len++;
+    sensor_data[len+2]=0x7;
+    len++;  // GPIO
+    sensor_data[len+2]=0x1;
+    len++; // len:1 bytes
+    sensor_data[len+2]=ui_Gpio8Status;
+    len++;
+	#endif
+	#if NODE_SENSOR_CT
+    sensor_data[len+2]=0x8;
+    len++; // adc
+    sensor_data[len+2]=0x3;
+    len++;  // len:3 bytes
+    sensor_data[len+2]=0x0;
+    len++; //0 is positive, 1 is negative
+    sensor_data[len+2]=(node_sensor_adc0>>8)&0xff;
+    len++;
+    sensor_data[len+2]=node_sensor_adc0&0xff;
+    len++;
+    sensor_data[len+2]=0x9;
+    len++; // adc
+    sensor_data[len+2]=0x3;
+    len++;  // len:3 bytes
+    sensor_data[len+2]=0x0;
+    len++; //0 is positive, 1 is negative
+    sensor_data[len+2]=(node_sensor_adc2>>8)&0xff;
+    len++;
+    sensor_data[len+2]=node_sensor_adc2&0xff;
     len++;
     #endif
     
-    #if ((!NODE_SENSOR_TEMP_HUM_ENABLE)&&(!NODE_SENSOR_CO2_VOC_ENABLE)&&(!NODE_GPIO_ENABLE))
+    #if ((!NODE_SENSOR_TEMP_HUM_ENABLE)&&(!NODE_SENSOR_CO2_VOC_ENABLE)&&(!NODE_SENSOR_CT)&&(!NODE_GPIO_ENABLE))
     return 0;
     #else
     //header
@@ -661,16 +734,44 @@ void node_state_loop()
                     #if NODE_GPIO_ENABLE
                     if(node_rx_done_data.data_port==5 && node_rx_done_data.data_len==1)
                     {
-                        if (node_rx_done_data.data[0] == '1') {
-                            led=1;
-                            gpio0=1; 
+                        if (node_rx_done_data.data[0] == '1')
+                        {
+                            g_gpio3=1;
+                            ui_Gpio3Status=1;
                         }
-                        else {
-                            led=0;
-                            gpio0=0;
+                        else
+                        {
+                            g_gpio3=0;
+                            ui_Gpio3Status=0;
                         }
                     }
-                    #endif // NODE_GPIO_ENABLE
+                    if(node_rx_done_data.data_port==6 && node_rx_done_data.data_len==1)
+                    {
+                        if (node_rx_done_data.data[0] == '1')
+                        {
+                            g_gpio4=1;
+                            ui_Gpio4Status=1;
+                        }
+                        else
+                        {
+                            g_gpio4=0;
+                            ui_Gpio4Status=0;
+                        }
+                    }
+					if(node_rx_done_data.data_port==7 && node_rx_done_data.data_len==1)
+                    {
+                        if (node_rx_done_data.data[0] == '1')
+                        {
+                            g_gpio8_pwm0=1;
+                            ui_Gpio8Status=1;
+                        }
+                        else
+                        {
+                            g_gpio8_pwm0=0;
+                            ui_Gpio8Status=0;
+                        }
+                    }
+					#endif // NODE_GPIO_ENABLE
                 }
                 node_state=NODE_STATE_LOWPOWER;
                 break;
@@ -694,6 +795,9 @@ int main ()
     #if NODE_SENSOR_CO2_VOC_ENABLE
     Thread *p_node_sensor_co2_thread;
     #endif
+	#if NODE_SENSOR_CT
+    Thread *p_node_sensor_adc_thread;
+    #endif
     
     /* Init carrier board, must be first step */
     nodeApiInitCarrierBoard();
@@ -706,6 +810,9 @@ int main ()
     #endif
     #if NODE_SENSOR_CO2_VOC_ENABLE
     p_node_sensor_co2_thread=new Thread(node_sensor_voc_co2_thread);
+    #endif
+	#if NODE_SENSOR_CT
+    p_node_sensor_adc_thread=new Thread(node_sensor_adc_thread);
     #endif
     
     /* Display version information */
@@ -756,6 +863,12 @@ int main ()
     nodeApiStartLora(); 
         
     Thread::wait(1000);
+
+	#if NODE_GPIO_ENABLE
+    g_gpio4 = ui_Gpio4Status;
+    g_gpio3 = ui_Gpio3Status;
+    g_gpio8_pwm0 = ui_Gpio8Status;
+    #endif
 
     #if (!NODE_SENSOR_TEMP_HUM_ENABLE)
     while(1)
