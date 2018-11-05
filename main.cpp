@@ -15,7 +15,7 @@
 
 int node_printf_to_serial(const char * format, ...);
 
-#define WISE_VERSION                  "1510-MMX0103-ALPS-SupportWISE1502"
+#define WISE_VERSION                  "1510-MMX0104-ALPS-SupportWISE1502"
 #define NODE_AUTOGEN_APPKEY
 
 #define NODE_SENSOR_TEMP_HUM_ENABLE    0    ///< Enable or disable TEMP/HUM sensor report, default disable
