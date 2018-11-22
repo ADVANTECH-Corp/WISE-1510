@@ -710,11 +710,11 @@ int main ()
     
     /* Display version information */
     NODE_DEBUG("\f");
-        NODE_DEBUG("\t\t *************************************************\n\r");
-        NODE_DEBUG("\t\t\t\t");
-        NODE_DEBUG(WISE_VERSION);
-        NODE_DEBUG("\n\r");
-        NODE_DEBUG("\t\t *************************************************\n\r");
+    NODE_DEBUG("\t\t *************************************************\n\r");
+    NODE_DEBUG("\t\t\t\t");
+    NODE_DEBUG(WISE_VERSION);
+    NODE_DEBUG("\n\r");
+    NODE_DEBUG("\t\t *************************************************\n\r");
     node_show_version();
         
     /*
