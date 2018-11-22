@@ -1,0 +1,120 @@
+[
+    {
+        "module": "DS1820/DS1820.o", 
+        "size": {
+            ".data": 0, 
+            ".bss": 0, 
+            ".text": 637
+        }
+    }, 
+    {
+        "module": "DS1820/OneWire", 
+        "size": {
+            ".data": 0, 
+            ".bss": 0, 
+            ".text": 734
+        }
+    }, 
+    {
+        "module": "[fill]", 
+        "size": {
+            ".data": 14, 
+            ".bss": 65, 
+            ".text": 197
+        }
+    }, 
+    {
+        "module": "[lib]/LoraNodeR1106JP.a", 
+        "size": {
+            ".data": 431, 
+            ".bss": 3097, 
+            ".text": 59800
+        }
+    }, 
+    {
+        "module": "[lib]/c.a", 
+        "size": {
+            ".data": 2548, 
+            ".bss": 127, 
+            ".text": 36917
+        }
+    }, 
+    {
+        "module": "[lib]/gcc.a", 
+        "size": {
+            ".data": 0, 
+            ".bss": 0, 
+            ".text": 3392
+        }
+    }, 
+    {
+        "module": "[lib]/m.a", 
+        "size": {
+            ".data": 0, 
+            ".bss": 0, 
+            ".text": 552
+        }
+    }, 
+    {
+        "module": "[lib]/misc", 
+        "size": {
+            ".data": 16, 
+            ".bss": 28, 
+            ".text": 252
+        }
+    }, 
+    {
+        "module": "main.o", 
+        "size": {
+            ".data": 7, 
+            ".bss": 605, 
+            ".text": 2920
+        }
+    }, 
+    {
+        "module": "mbed-os/drivers", 
+        "size": {
+            ".data": 4, 
+            ".bss": 188, 
+            ".text": 3230
+        }
+    }, 
+    {
+        "module": "mbed-os/hal", 
+        "size": {
+            ".data": 4, 
+            ".bss": 68, 
+            ".text": 1967
+        }
+    }, 
+    {
+        "module": "mbed-os/platform", 
+        "size": {
+            ".data": 36, 
+            ".bss": 261, 
+            ".text": 3684
+        }
+    }, 
+    {
+        "module": "mbed-os/rtos", 
+        "size": {
+            ".data": 168, 
+            ".bss": 5101, 
+            ".text": 14492
+        }
+    }, 
+    {
+        "module": "mbed-os/targets", 
+        "size": {
+            ".data": 4, 
+            ".bss": 1536, 
+            ".text": 25238
+        }
+    }, 
+    {
+        "summary": {
+            "static_ram": 14308, 
+            "total_flash": 157244
+        }
+    }
+]
