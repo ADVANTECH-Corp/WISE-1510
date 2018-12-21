@@ -114,11 +114,13 @@ void rtc_init(void)
         error("RTC initialization failed");
     }
 
+#if !MBED_CONF_TARGET_LSE_AVAILABLE
     rtc_synchronize(); // Wait for RSF
 
     if (!rtc_isenabled()) {
         rtc_write(0);
     }
+#endif
 }
 
 void rtc_free(void)

@@ -519,12 +519,21 @@ unsigned short nodeApiStopLora();
 
 /** Enable ExternalRTC
  *
- *  Enable external RTC enable for WISE-1510 WISE-link 2.0, must be execute before nodeApiStartLora(0: Disable |1:Enable; Default:0)
- *  @param buf_in ExternalRTC to Enable
-  *  @param buf_in ExternalRTC i2c interface
+ *  Enable external RTC enable for WISE-1510 WISE-link 2.0, must be execute before nodeApiStarWtLora(0: Disable |1:Enable; Default:0)
+ *  @param enable ExternalRTC to Enable
+  * @param i2c ExternalRTC i2c interface
  *  @returns NODE_API_OK on success
  */
 unsigned short nodeApiEnableExternalRTC(unsigned char enable,void *i2c);
+
+
+/** Enable RTC auto compensation
+ *
+ *  Enable RTC auto compensation for WISE-1510E WISE-link 2.0
+ *  @param enable RTC auto compensation to Enable
+ *  @returns NODE_API_OK on success
+ */
+void nodeApiEnableRtcAutoCompensation(unsigned char enable);
 
 #ifdef __cplusplus
 }

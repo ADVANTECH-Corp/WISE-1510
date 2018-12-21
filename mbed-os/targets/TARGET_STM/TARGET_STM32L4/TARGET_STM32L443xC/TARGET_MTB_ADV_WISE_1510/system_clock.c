@@ -234,11 +234,17 @@ uint8_t SetSysClock_PLL_HSE(uint8_t bypass)
     RCC_OscInitStruct.PLL.PLLState   = RCC_PLL_NONE; // No PLL update
     HAL_RCC_OscConfig(&RCC_OscInitStruct);
 	
+    
 	// if reinitialise the clock need, 20180607,Charles
 	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSI  | RCC_OSCILLATORTYPE_LSE; 
 	RCC_OscInitStruct.PLL.PLLState   = RCC_PLL_NONE; // Mandatory, otherwise the PLL is reconfigured!
-	RCC_OscInitStruct.LSEState       = RCC_LSE_OFF;
+	#if MBED_CONF_TARGET_LSE_AVAILABLE
+    RCC_OscInitStruct.LSEState       = RCC_LSE_ON;
+	RCC_OscInitStruct.LSIState       = RCC_LSI_OFF;
+    #else
+    RCC_OscInitStruct.LSEState       = RCC_LSE_OFF;
 	RCC_OscInitStruct.LSIState       = RCC_LSI_ON;
+    #endif
 	if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
         error("Cannot initialize RTC with LSI\n");
 	} 
@@ -250,7 +256,6 @@ uint8_t SetSysClock_PLL_HSE(uint8_t bypass)
     else
         HAL_RCC_MCOConfig(RCC_MCO1, RCC_MCO1SOURCE_HSE, RCC_MCODIV_1); // 8 MHz
 #endif
-
     return 1; // OK
 }
 #endif /* ((CLOCK_SOURCE) & USE_PLL_HSE_XTAL) || ((CLOCK_SOURCE) & USE_PLL_HSE_EXTC) */
