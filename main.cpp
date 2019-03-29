@@ -12,7 +12,7 @@
 #include "mbed.h"
 #include "node_api.h"
 
-#define WISE_VERSION                  "1510S00MMV0104"
+#define WISE_VERSION                  "1510S00MMV0105"
 #define NODE_AUTOGEN_APPKEY
 
 #define NODE_SENSOR_TEMP_HUM_ENABLE    1    ///< Enable or disable TEMP/HUM sensor report, default disable
@@ -20,7 +20,7 @@
 
 #define NODE_DEBUG(x,args...) node_printf_to_serial(x,##args)
 
-#define NODE_DEEP_SLEEP_MODE_SUPPORT   1    ///< Flag to Enable/Disable deep sleep mode
+#define NODE_DEEP_SLEEP_MODE_SUPPORT   0    ///< Flag to Enable/Disable deep sleep mode
 #define NODE_ACTIVE_PERIOD_IN_SEC     (node_sensor_report_interval)    ///< Period time to read/send sensor data  >= 3sec
 #define NODE_RXWINDOW_PERIOD_IN_SEC    4    ///< Rx windown time  
 #define NODE_ACTIVE_TX_PORT            1    ///< Lora Port to send data
@@ -308,9 +308,9 @@ void node_set_config()
     //nodeApiSetAppKey("00000000000000000000000000000011");
     //nodeApiSetNwkSKey("00000000000000000000000000000011");
     //nodeApiSetAppSKey("00000000000000000000000000000011");
-    //nodeApiSetDevActMode("2");
-    //nodeApiSetDevOpMode("1");
-    //nodeApiSetDevClass("3");
+    nodeApiSetDevActMode("2");
+    nodeApiSetDevOpMode("1");
+    nodeApiSetDevClass("3");
     //nodeApiSetDevAdvwiseDataRate("4");
     //nodeApiSetDevAdvwiseFreq("923300000");
     //nodeApiSetDevAdvwiseTxPwr("20");
