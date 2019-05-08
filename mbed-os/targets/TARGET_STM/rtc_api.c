@@ -175,6 +175,7 @@ For date, there is no specific register, only a software structure.
 It is then not a problem to not use shifts.
 */
 unsigned int subsec;
+
 time_t rtc_read(void)
 {
     RTC_DateTypeDef dateStruct = {0};
@@ -275,6 +276,11 @@ void rtc_synchronize(void)
     if (HAL_RTC_WaitForSynchro(&RtcHandle) != HAL_OK) {
         error("rtc_synchronize error\n");
     }
+}
+
+unsigned char rtc_gethse(void)
+{
+	return MBED_CONF_TARGET_LSE_AVAILABLE;
 }
 
 #if DEVICE_LPTICKER && !MBED_CONF_TARGET_LPTICKER_LPTIM

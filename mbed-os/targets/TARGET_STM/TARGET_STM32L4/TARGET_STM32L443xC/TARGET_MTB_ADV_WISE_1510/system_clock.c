@@ -236,15 +236,14 @@ uint8_t SetSysClock_PLL_HSE(uint8_t bypass)
 	
     
 	// if reinitialise the clock need, 20180607,Charles
-	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSI  | RCC_OSCILLATORTYPE_LSE; 
-	RCC_OscInitStruct.PLL.PLLState   = RCC_PLL_NONE; // Mandatory, otherwise the PLL is reconfigured!
-	#if MBED_CONF_TARGET_LSE_AVAILABLE
-    RCC_OscInitStruct.LSEState       = RCC_LSE_ON;
-	RCC_OscInitStruct.LSIState       = RCC_LSI_OFF;
-    #else
+	// fixed advantech write flash issue.
+	#if !MBED_CONF_TARGET_LSE_AVAILABLE
+    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSI| RCC_OSCILLATORTYPE_LSE ; 
+    RCC_OscInitStruct.LSIState       = RCC_LSI_ON;
     RCC_OscInitStruct.LSEState       = RCC_LSE_OFF;
-	RCC_OscInitStruct.LSIState       = RCC_LSI_ON;
     #endif
+    RCC_OscInitStruct.PLL.PLLState   = RCC_PLL_NONE; // Mandatory, otherwise the PLL is reconfigured!
+    
 	if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
         error("Cannot initialize RTC with LSI\n");
 	} 

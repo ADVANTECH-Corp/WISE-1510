@@ -155,8 +155,8 @@ void hal_sleep(void)
     // Enable IRQs
     core_util_critical_section_exit();
 }
-
-#if 0
+//Re-open for lora disconnect issue.
+#if 1	
 void hal_deepsleep(void)
 {
     // Disable IRQs
@@ -189,7 +189,11 @@ void hal_deepsleep(void)
 #endif /* TARGET_STM32L4 */
 
     // Verify Clock Out of Deep Sleep
-    ForceClockOutofDeepSleep();
+	//ARM MBED official web site and fixed by ARM already. 
+	//https://github.com/ARMmbed/mbed-os/pull/6561
+    //ForceClockOutofDeepSleep();
+    ForceOscOutofDeepSleep();
+    ForcePeriphOutofDeepSleep();
 
     // After wake-up from STOP reconfigure the PLL
     SetSysClock();

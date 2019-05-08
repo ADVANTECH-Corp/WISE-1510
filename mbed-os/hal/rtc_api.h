@@ -133,6 +133,8 @@ void rtc_free(void);
  */
 int rtc_isenabled(void);
 
+unsigned char rtc_gethse(void);
+
 /** Get the current time from the RTC peripheral
  *
  * @return The current time in seconds

@@ -12,7 +12,7 @@
 #include "mbed.h"
 #include "node_api.h"
 
-#define WISE_VERSION                  "1510-MMX0105-Standard(R1107)"
+#define WISE_VERSION                  "1510S10MMX0106B01"
 #define NODE_AUTOGEN_APPKEY
 
 #define NODE_SENSOR_TEMP_HUM_ENABLE    1    ///< Enable or disable TEMP/HUM sensor report, default disable
@@ -21,7 +21,7 @@
 #define NODE_DEBUG(x,args...) node_printf_to_serial(x,##args)
 
 #define NODE_DEEP_SLEEP_MODE_SUPPORT   1    ///< Flag to Enable/Disable deep sleep mode
-#define NODE_ACTIVE_PERIOD_IN_SEC     10    ///< Period time to read/send sensor data  >= 3sec
+#define NODE_ACTIVE_PERIOD_IN_SEC      (node_sensor_report_interval)     ///< Period time to read/send sensor data  >= 3sec
 #define NODE_RXWINDOW_PERIOD_IN_SEC    4    ///< Rx windown time  
 #define NODE_ACTIVE_TX_PORT            1    ///< Lora Port to send data
 
@@ -59,6 +59,8 @@ typedef enum
     NODE_STATE_RX,        ///<Node rx state
     NODE_STATE_RX_DONE,         ///< Node rx done state
 }node_state_t;
+static unsigned int node_sensor_report_interval=10;
+extern unsigned short nodeApiGetDevRptIntvlSec(char * buf_out, unsigned short buf_len);
 
 struct node_api_ev_rx_done node_rx_done_data;
 volatile node_state_t node_state = NODE_STATE_INIT;
@@ -401,6 +403,14 @@ void node_get_config()
     {
         node_class=atoi(buf_out);
         NODE_DEBUG("DevClass=%d\r\n", node_class);
+    }
+
+	memset(buf_out, 0, 256);
+    ret=nodeApiGetDevRptIntvlSec(buf_out, 256);
+    if(ret==NODE_API_OK)
+    {
+        node_sensor_report_interval=atoi(buf_out);
+        NODE_DEBUG("DevRptIntvlSec=%d\r\n", node_sensor_report_interval);
     }
 
     if(node_op_mode==1||node_op_mode==2)
