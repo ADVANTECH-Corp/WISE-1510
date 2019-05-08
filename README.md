@@ -1,10 +1,10 @@
-# WISE-1510
-WISE-1510 LoRa Module SDK Release
+# WISE-1510 SDK
+
 ## Deployment
 
 Please follow the below steps to deploy our SDK:
 
-1. `git clone https://github.com/ADVANTECH-Corp/WISE-1510.git`
+1. `git clone http://advgitlab.eastasia.cloudapp.azure.com/WISE-IoT/WISE-1510-SDK.git`
 
 1. `cd WISE-1510-SDK`
 
