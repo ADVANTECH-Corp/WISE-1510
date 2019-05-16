@@ -12,7 +12,7 @@
 #include "mbed.h"
 #include "node_api.h"
 
-#define WISE_VERSION                  "1510S10MMX0106B01"
+#define WISE_VERSION                  "1510S10MMV0106"
 #define NODE_AUTOGEN_APPKEY
 
 #define NODE_SENSOR_TEMP_HUM_ENABLE    1    ///< Enable or disable TEMP/HUM sensor report, default disable
@@ -26,7 +26,6 @@
 #define NODE_ACTIVE_TX_PORT            1    ///< Lora Port to send data
 
 #define NODE_M2_COM_UART 0    ///< Declare M2 COM UART for easy debug
-#define NODE_SUPPORT_EXTERNAL_RTC 0 ///< EXTERNAL RTC support
 #define NODE_WISE_1510E MBED_CONF_TARGET_LSE_AVAILABLE
 
 #if NODE_DEEP_SLEEP_MODE_SUPPORT
@@ -771,15 +770,6 @@ int main ()
     node_get_config();  
 
 	#if NODE_DEEP_SLEEP_MODE_SUPPORT
-	#if NODE_SUPPORT_EXTERNAL_RTC
-	if(node_op_mode==4)
-	{
-	
-		nodeApiEnableExternalRTC(1,(void *)&i2c); //Enable 
-
-	}
-	else 
-	#endif
 	if(node_op_mode==1)
 	{
 		p_lpin=new DigitalOut(PA_15,0);
