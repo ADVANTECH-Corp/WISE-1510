@@ -171,7 +171,7 @@ typedef enum {
   SPI_RF_SCK  = PB_3,
   SPI_RF_CS   = PA_15,
   SPI_RF_RESET= PC_14,
-  SPI_RF_RESET_NEW= PC_12,		//for LSI crystal
+
   DIO0        = PC_13,
   DIO1        = PB_8,
   DIO2        = PB_7,
@@ -180,8 +180,7 @@ typedef enum {
   DIO5        = PC_10,
 
   ANT_SWITCH  = PC_15,
-  ANT_SWITCH_NEW  = PB_2,		//for LSI crystal
-  ANT_SWITCH_NEW_INV  = PC_10,	//for LSI crystal
+
   // Generic signals namings
   LED1        = PWM0,
   LED2        = GPIO2,

@@ -12,7 +12,7 @@
 #include "mbed.h"
 #include "node_api.h"
 
-#define WISE_VERSION                  "1510S10MMV0106"
+#define WISE_VERSION                  "1510S00MMV0106"
 #define NODE_AUTOGEN_APPKEY
 
 #define NODE_SENSOR_TEMP_HUM_ENABLE    1    ///< Enable or disable TEMP/HUM sensor report, default disable
@@ -20,13 +20,11 @@
 
 #define NODE_DEBUG(x,args...) node_printf_to_serial(x,##args)
 
-#define NODE_DEEP_SLEEP_MODE_SUPPORT   1    ///< Flag to Enable/Disable deep sleep mode
-#define NODE_ACTIVE_PERIOD_IN_SEC      (node_sensor_report_interval)     ///< Period time to read/send sensor data  >= 3sec
+#define NODE_DEEP_SLEEP_MODE_SUPPORT   0    ///< Flag to Enable/Disable deep sleep mode
+#define NODE_ACTIVE_PERIOD_IN_SEC     (node_sensor_report_interval)    ///< Period time to read/send sensor data  >= 3sec
 #define NODE_RXWINDOW_PERIOD_IN_SEC    4    ///< Rx windown time  
 #define NODE_ACTIVE_TX_PORT            1    ///< Lora Port to send data
 
-#define NODE_M2_COM_UART 0    ///< Declare M2 COM UART for easy debug
-#define NODE_WISE_1510E MBED_CONF_TARGET_LSE_AVAILABLE
 
 #if NODE_DEEP_SLEEP_MODE_SUPPORT
 #define NODE_GPIO_ENABLE               0   ///< Disable GPIO report for deep sleep 
@@ -35,11 +33,8 @@ static DigitalOut *p_lpin;
 #define NODE_GPIO_ENABLE               1   ///< Enable or disable GPIO report
 #endif
 
-#if NODE_M2_COM_UART
-RawSerial m2_serial(PC_4, PB_11);        ///< M2 serial port
-#else
-RawSerial debug_serial(PA_9, PA_10);	///< Debug serial port
-#endif
+RawSerial debug_serial(PA_9, PA_10);      ///< Debug serial port
+
 
 #if NODE_GPIO_ENABLE
 ///< Control downlink GPIO1
@@ -58,6 +53,7 @@ typedef enum
     NODE_STATE_RX,        ///<Node rx state
     NODE_STATE_RX_DONE,         ///< Node rx done state
 }node_state_t;
+
 static unsigned int node_sensor_report_interval=10;
 extern unsigned short nodeApiGetDevRptIntvlSec(char * buf_out, unsigned short buf_len);
 
@@ -90,22 +86,16 @@ int node_printf_to_serial(const char * format, ...)
     char buf[512 + 1];
     memset(buf, 0, 512+1);
 
-	va_start(ap, format);
-	vsnprintf(buf, sizeof(buf), (char *)format, ap);  
-	va_end(ap);
-	
-	#if NODE_M2_COM_UART
-	for(i=0; i < strlen(buf); i++)
-	{
-		m2_serial.putc(buf[i]);
-	}
-	#else
-	for(i=0; i < strlen(buf); i++)
-	{
-		debug_serial.putc(buf[i]);
-	}
-	#endif
-	return 0;
+    va_start(ap, format);
+    vsnprintf(buf, sizeof(buf), (char *)format, ap);  
+    va_end(ap);
+    
+    for(i=0; i < strlen(buf); i++)
+    {
+        debug_serial.putc(buf[i]);
+    }
+    
+    return 0;
 }
 
 #if NODE_SENSOR_CO2_VOC_ENABLE
@@ -531,15 +521,12 @@ void node_state_loop()
 
     node_state=NODE_STATE_LOWPOWER;
 
-	if(node_op_mode==4)
-	{
-		NODE_DEBUG("WISE link 2.0 \r\n");	
-		nodeApiSetBeaconCb(node_beacon_cb);
-		#if NODE_WISE_1510E
-		nodeApiEnableRtcAutoCompensation(1);
-		#endif
-	}
-	
+    if(node_op_mode==4)
+    {
+        NODE_DEBUG("WISE link 2.0 \r\n");   
+        nodeApiSetBeaconCb(node_beacon_cb);
+    }
+    
 
     while(1)
     {
@@ -722,14 +709,9 @@ int main ()
     /* Init carrier board, must be first step */
     nodeApiInitCarrierBoard();
 
-	#if NODE_M2_COM_UART	
-	m2_serial.baud(115200);
-	nodeApiInit(&m2_serial, &m2_serial);
-	#else	
-	debug_serial.baud(115200);
-	nodeApiInit(&debug_serial, &debug_serial);
-	#endif
+    debug_serial.baud(115200);
 
+    nodeApiInit(&debug_serial, &debug_serial);
     #if NODE_SENSOR_TEMP_HUM_ENABLE
     p_node_sensor_temp_hum_thread=new Thread(node_sensor_temp_hum_thread);
     #endif
@@ -751,9 +733,9 @@ int main ()
      */
     nodeApiLoadCfg();
 
-	node_set_config();
-	
-	#ifdef NODE_AUTOGEN_APPKEY	
+    node_set_config();
+
+    #ifdef NODE_AUTOGEN_APPKEY  
 
     char deveui[17]={};
     if(nodeApiGetFuseDevEui(deveui,16)==NODE_API_OK)    
@@ -769,10 +751,14 @@ int main ()
 
     node_get_config();  
 
-	#if NODE_DEEP_SLEEP_MODE_SUPPORT
-	if(node_op_mode==1)
-	{
-		p_lpin=new DigitalOut(PA_15,0);
+    #if NODE_DEEP_SLEEP_MODE_SUPPORT
+    if(node_op_mode==4)
+    {
+        nodeApiEnableExternalRTC(1,(void *)&i2c);
+    }
+    else if(node_op_mode==1)
+    {
+        p_lpin=new DigitalOut(PA_15,0);
 
     }
     #endif      
