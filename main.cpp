@@ -11,16 +11,25 @@
 
 #include "mbed.h"
 #include "node_api.h"
+#if SENSOR_DS1820
+#include "DS1820.h"
+#endif
+#if SENSOR_MAX4466
+#include "MAX4466.h"
+#endif
+#if SENSOR_VL53L0X
+#include "VL53L0X.h"
+#endif
 
-#define WISE_VERSION                  "1510S10MMV0106"
+#define WISE_VERSION                  "1510S10MMV0106-Kolon-7sensors"
 #define NODE_AUTOGEN_APPKEY
 
-#define NODE_SENSOR_TEMP_HUM_ENABLE    1    ///< Enable or disable TEMP/HUM sensor report, default disable
+#define NODE_SENSOR_TEMP_HUM_ENABLE    0    ///< Enable or disable TEMP/HUM sensor report, default disable
 #define NODE_SENSOR_CO2_VOC_ENABLE     0    ///< Enable or disable CO2/VOC sensor report, default disable
 
 #define NODE_DEBUG(x,args...) node_printf_to_serial(x,##args)
 
-#define NODE_DEEP_SLEEP_MODE_SUPPORT   1    ///< Flag to Enable/Disable deep sleep mode
+#define NODE_DEEP_SLEEP_MODE_SUPPORT   0    ///< Flag to Enable/Disable deep sleep mode
 #define NODE_ACTIVE_PERIOD_IN_SEC      (node_sensor_report_interval)     ///< Period time to read/send sensor data  >= 3sec
 #define NODE_RXWINDOW_PERIOD_IN_SEC    4    ///< Rx windown time  
 #define NODE_ACTIVE_TX_PORT            1    ///< Lora Port to send data
@@ -28,11 +37,39 @@
 #define NODE_M2_COM_UART 0    ///< Declare M2 COM UART for easy debug
 #define NODE_WISE_1510E MBED_CONF_TARGET_LSE_AVAILABLE
 
+#if SENSOR_DS1820
+#define NODE_SENSOR_DI_TEMPERATURE     1
+#define MAX_SENSOR_DI_TEMPERATURE_NUM  3
+#define SENSOR1_IO_PIN  GPIO3
+#define SENSOR2_IO_PIN  GPIO2
+#define SENSOR3_IO_PIN  GPIO0
+#endif
+
+#if SENSOR_MAX4466
+#define NODE_SENSOR_MICROPHONE  1
+#define MICROPHONE_THRESHOLD    3.00f
+static MAX4466 mic(ADC0);
+#endif
+
+#if SENSOR_VL53L0X
+#define NODE_SENSOR_TOF         1
+#define TOF_TOTAL_DATA_NUM      10
+#define range1_addr     (0x56)
+#define range2_addr     (0x60)
+#define range3_addr     (0x64)
+#define range1_XSHUT    GPIO4
+#define range2_XSHUT    PWM0
+#define range3_XSHUT    GPIO6
+static DevI2C devI2c(I2C_SDA ,I2C_SCL);
+#endif
+
+static rtos::Mutex gtTofMutex;
+
 #if NODE_DEEP_SLEEP_MODE_SUPPORT
 #define NODE_GPIO_ENABLE               0   ///< Disable GPIO report for deep sleep 
 static DigitalOut *p_lpin;
 #else
-#define NODE_GPIO_ENABLE               1   ///< Enable or disable GPIO report
+#define NODE_GPIO_ENABLE               0   ///< Enable or disable GPIO report
 #endif
 
 #if NODE_M2_COM_UART
@@ -44,10 +81,26 @@ RawSerial debug_serial(PA_9, PA_10);	///< Debug serial port
 #if NODE_GPIO_ENABLE
 ///< Control downlink GPIO1
 static DigitalOut led(PC_8);//IO01
+//static DigitalOut led(GPIO3);//IO01
 static unsigned int gpio0;
 #else
 DigitalIn gp6(PC_8); ///PC8 consumes power if not declare
+//DigitalIn gp6(GPIO3); ///PC8 consumes power if not declare
 #endif
+
+typedef struct _STofData
+{
+    unsigned int uiLeftDistance;
+    unsigned int uiMidDistance;
+    unsigned int uiRightDistance;
+}TTofData;
+
+typedef enum
+{
+    TOF_LEFT = 1,
+    TOF_MIDDLE = 2,
+    TOF_RIGHT = 3
+}tof_side_t;
 
 typedef enum
 {
@@ -74,8 +127,17 @@ static unsigned int  node_sensor_temp_hum=0; ///<Temperature and humidity sensor
 #if NODE_SENSOR_CO2_VOC_ENABLE
 static  unsigned int node_sensor_voc_co2=0; ///<Voc and CO2 sensor global
 #endif
+#if NODE_SENSOR_DI_TEMPERATURE
+static int g_aiAdcTemperatureData[MAX_SENSOR_DI_TEMPERATURE_NUM];
+#endif
+#if NODE_SENSOR_MICROPHONE
+static unsigned int node_sensor_microphone=0;
+#endif
+#if NODE_SENSOR_TOF
+static TTofData g_atTofData[TOF_TOTAL_DATA_NUM];
+#endif
 
-I2C i2c(PC_1, PC_0); ///<i2C define
+//I2C i2c(PC_1, PC_0); ///<i2C define
 
 /** @brief print message via serial
  *
@@ -217,6 +279,247 @@ static void node_sensor_temp_hum_thread(void const *args)
     }
 }
 #endif
+
+#if NODE_SENSOR_DI_TEMPERATURE
+DS1820  ds1820[MAX_SENSOR_DI_TEMPERATURE_NUM] = {DS1820(SENSOR1_IO_PIN), 
+                                                    DS1820(SENSOR2_IO_PIN), 
+                                                    DS1820(SENSOR3_IO_PIN)};
+static void node_sensor_di_int(void)
+{
+        for(int i = 0; i < MAX_SENSOR_DI_TEMPERATURE_NUM; i++) {
+            while(1) {
+                if(!ds1820[i].begin()) {
+                    NODE_DEBUG("Cannot find sensor %d\n\r", i);
+                } else {
+                    ds1820[i].startConversion();
+                    break;
+                }
+                Thread::wait(5000);
+            }
+        }
+}
+
+static void node_sensor_di_thread(void const *args)
+{
+        int cnt=0;
+        int i=0;
+        unsigned int cnt2=0;
+        float afData[MAX_SENSOR_DI_TEMPERATURE_NUM];
+
+        cnt = 120; // Update sensor data every 120 seconds
+        while(1) 
+        {
+            if(cnt >= 120) {
+                gtTofMutex.lock();
+                for(i = 0; i < MAX_SENSOR_DI_TEMPERATURE_NUM; i++) {
+                    if(ds1820[i].isPresent()) {
+                        ds1820[i].startConversion();     // start temperature conversion
+                        Thread::wait(1000);
+                        afData[i] = ds1820[i].read();
+                        g_aiAdcTemperatureData[i] = afData[i] * 100;
+                        //NODE_DEBUG("[%08d] temp%d = %3.1f, loratemp:%d\r\n",cnt2, i, afData[i], g_aiAdcTemperatureData[i]);     // read temperature
+                        //Thread::wait(2000);
+                    }
+                }
+                gtTofMutex.unlock();
+                //wait(1.0);  // let DS1820s complete the temperature conversion
+                cnt = 0;
+                cnt2++;
+            }
+            
+            Thread::wait(1000);
+            cnt++;
+        }
+}
+#endif // NODE_SENSOR_DI_TEMPERATURE
+
+#if NODE_SENSOR_MICROPHONE
+static void node_sensor_microphone_thread(void const *args)
+{
+        int i;
+        int cnt=0;
+        unsigned int cnt2=0;
+        double num=0;
+
+        cnt = 60; // Update sensor data every 60 seconds
+        mic.volume_indicator();
+        while(1) 
+        {
+            if(cnt >= 60) {
+                gtTofMutex.lock();
+                for(i=0; i<10; i++) {
+                    num = mic.sound_level();
+                    //num = mic.sound();
+                    if(i < 5) continue;
+#if 1                    
+                    if(isnan(num)) {
+                        NODE_DEBUG("NAN\n\r");
+                    } 
+                    else {
+                        NODE_DEBUG("[%08d] Level is %f\n\r", cnt2, num);
+                        if(num > MICROPHONE_THRESHOLD) {
+                            node_sensor_microphone++;
+                        }
+                        NODE_DEBUG("[%08d] Microphone cnt:%d\n\r", cnt2, node_sensor_microphone);
+                        break;
+                    }
+#endif                    
+                    Thread::wait(10);
+                }
+                gtTofMutex.unlock();
+                cnt = 0;
+                cnt2++;
+            }
+            
+            Thread::wait(1000);
+            cnt++;
+        }
+}
+#endif // NODE_SENSOR_MICROPHONE
+
+#if NODE_SENSOR_TOF
+static int SetTofData(TTofData *_ptData)
+{
+    static int iCnt = 0;
+
+    if(iCnt >= TOF_TOTAL_DATA_NUM) 
+        iCnt = 0;
+    
+    g_atTofData[iCnt].uiLeftDistance = _ptData->uiLeftDistance;
+    g_atTofData[iCnt].uiMidDistance = _ptData->uiMidDistance;
+    g_atTofData[iCnt].uiRightDistance = _ptData->uiRightDistance;
+    iCnt++;  
+
+    return 0;
+}
+
+static int GetTofOneData(TTofData *_ptData)
+{
+    _ptData->uiLeftDistance = g_atTofData[0].uiLeftDistance;
+    _ptData->uiMidDistance = g_atTofData[0].uiMidDistance;
+    _ptData->uiRightDistance = g_atTofData[0].uiRightDistance;
+
+    return 0;
+}
+
+static int GetTofAvgData(TTofData *_ptData)
+{
+    int i;
+    _ptData->uiLeftDistance = 0;
+    _ptData->uiMidDistance = 0;
+    _ptData->uiRightDistance = 0;
+
+    for(i=0; i<TOF_TOTAL_DATA_NUM; i++) {
+        _ptData->uiLeftDistance += g_atTofData[i].uiLeftDistance;
+        _ptData->uiMidDistance += g_atTofData[i].uiMidDistance;
+        _ptData->uiRightDistance += g_atTofData[i].uiRightDistance;
+    }
+
+    _ptData->uiLeftDistance /= TOF_TOTAL_DATA_NUM;
+    _ptData->uiMidDistance /= TOF_TOTAL_DATA_NUM;  
+    _ptData->uiRightDistance /= TOF_TOTAL_DATA_NUM;  
+
+    return 0;
+}
+
+static void node_sensor_tof_thread(void const *args)
+{
+    int i;
+    int cnt=0;
+    unsigned int cnt2=0;
+    int status1;
+    int status2;
+    int status3;
+     /*Get datas*/
+    uint32_t distance1; //middle
+    uint32_t distance2; //right
+    uint32_t distance3; //left
+    TTofData tData, tOutData;
+
+    /*Contruct the sensors*/
+    static DigitalOut shutdown1_pin(range1_XSHUT);
+    static VL53L0X range1(&devI2c, &shutdown1_pin, NC);
+    static DigitalOut shutdown2_pin(range2_XSHUT);
+    static VL53L0X range2(&devI2c, &shutdown2_pin, NC);
+    static DigitalOut shutdown3_pin(range3_XSHUT);
+    static VL53L0X range3(&devI2c, &shutdown3_pin, NC);
+
+    /*Initial all sensors*/
+    status1 = range1.init_sensor(range1_addr);
+    NODE_DEBUG("status1:%d\r\n", status1);
+    status2 = range2.init_sensor(range2_addr);
+    NODE_DEBUG("status2:%d\r\n", status2);
+    status3 = range3.init_sensor(range3_addr);
+    NODE_DEBUG("status3:%d\r\n", status3);
+
+    cnt = 60; // Update sensor data every 60 seconds
+    while(1) 
+    {
+        if(cnt >= 60) {
+            gtTofMutex.lock();
+            for(i=0; i<10; i++) {
+                status1 = range1.get_distance(&distance1);
+                if (status1 == VL53L0X_ERROR_NONE) {
+                    NODE_DEBUG("[%08d] Range1 [mm]:            %6ld\r\n", cnt2, distance1);
+                    break;
+                } else {
+                    distance1 = 0;
+                    NODE_DEBUG("Range1 [mm]:                --\r\n");
+                }
+            }
+
+            for(i=0; i<10; i++) {
+                status2 = range2.get_distance(&distance2);
+                if (status2 == VL53L0X_ERROR_NONE) {
+                    NODE_DEBUG("[%08d] Range2 [mm]:            %6ld\r\n", cnt2, distance2);
+                    break;
+                } else {
+                    distance2 = 0;
+                    NODE_DEBUG("Range2 [mm]:                --\r\n");
+                }
+            }
+
+            for(i=0; i<10; i++) {
+                status3 = range3.get_distance(&distance3);
+                if (status3 == VL53L0X_ERROR_NONE) {
+                    NODE_DEBUG("[%08d] Range3 [mm]:            %6ld\r\n", cnt2, distance3);
+                    break;
+                } else {
+                    distance3 = 0;
+                    NODE_DEBUG("Range3 [mm]:                --\r\n");
+                }
+            }
+
+            gtTofMutex.unlock();
+            tData.uiLeftDistance    = distance1;
+            tData.uiMidDistance     = distance2;
+            tData.uiRightDistance   = distance3;
+            SetTofData(&tData);
+            //wait(0.5);
+            //Thread::wait(10);
+#if 0 // For debug 
+            GetTofAvgData(&tOutData);
+            NODE_DEBUG("Avg: Left:%6ld, Mid:%6ld, Right:%6ld\n\r",
+                            tOutData.uiLeftDistance,
+                            tOutData.uiMidDistance,
+                            tOutData.uiRightDistance);
+            GetTofOneData(&tOutData);
+            NODE_DEBUG("One: Left:%6ld, Mid:%6ld, Right:%6ld\n\r",
+                            tOutData.uiLeftDistance,
+                            tOutData.uiMidDistance,
+                            tOutData.uiRightDistance);
+    
+#endif // end 1
+            cnt = 0;
+            cnt2++;
+        }
+
+        Thread::wait(1000);
+        cnt++;
+    }
+}
+#endif // NODE_SENSOR_TOF
+
 
 /** @brief node tx procedure done
  *
@@ -458,8 +761,89 @@ unsigned char node_get_sensor_data (char *data)
 {
     unsigned char len=0;
     unsigned char sensor_data[32];
+    #if NODE_SENSOR_TOF
+    static int iFirstGetData = 0;
+    TTofData tTofData;
+    #endif
     
     memset(sensor_data,0x0,sizeof(sensor_data));
+    #if NODE_SENSOR_DI_TEMPERATURE
+    sensor_data[len+2]=0x1;
+    len++; // temperature1
+    sensor_data[len+2]=0x3;
+    len++;  // len:3 bytes
+    (g_aiAdcTemperatureData[0] > 0) ? sensor_data[len+2]=0x00 : sensor_data[len+2]=0xff;
+    len++; //0x0 is positive, 0xff is negative
+    sensor_data[len+2]=(g_aiAdcTemperatureData[0]>>8)&0xff;
+    len++;
+    sensor_data[len+2]=g_aiAdcTemperatureData[0]&0xff;
+    len++;
+    sensor_data[len+2]=0x2;
+    len++; // temperature2
+    sensor_data[len+2]=0x3;
+    len++;  // len:3 bytes
+    (g_aiAdcTemperatureData[1] > 0) ? sensor_data[len+2]=0x00 : sensor_data[len+2]=0xff;
+    len++; //0x0 is positive, 0xff is negative
+    sensor_data[len+2]=(g_aiAdcTemperatureData[1]>>8)&0xff;
+    len++;
+    sensor_data[len+2]=g_aiAdcTemperatureData[1]&0xff;
+    len++;
+    sensor_data[len+2]=0x3;
+    len++; // temperature3
+    sensor_data[len+2]=0x3;
+    len++;  // len:3 bytes
+    (g_aiAdcTemperatureData[2] > 0) ? sensor_data[len+2]=0x00 : sensor_data[len+2]=0xff;
+    len++; //0x0 is positive, 0xff is negative
+    sensor_data[len+2]=(g_aiAdcTemperatureData[2]>>8)&0xff;
+    len++;
+    sensor_data[len+2]=g_aiAdcTemperatureData[2]&0xff;
+    len++;
+    #endif // NODE_SENSOR_DI_TEMPERATURE
+
+    #if NODE_SENSOR_TOF
+    if(iFirstGetData != 0) {
+        GetTofAvgData(&tTofData);
+    }
+    else {
+        GetTofOneData(&tTofData);
+        iFirstGetData = 1;
+    }
+    sensor_data[len+2]=0x4;
+    len++; // tof left
+    sensor_data[len+2]=0x2;
+    len++;  // len:2 bytes
+    sensor_data[len+2]=(tTofData.uiLeftDistance>>8)&0xff;//(node_sensor_tof_left>>8)&0xff;
+    len++; 
+    sensor_data[len+2]=tTofData.uiLeftDistance&0xff;//node_sensor_tof_left&0xff;
+    len++;
+    sensor_data[len+2]=0x5;
+    len++; // tof mid
+    sensor_data[len+2]=0x2;
+    len++;  // len:2 bytes
+    sensor_data[len+2]=(tTofData.uiMidDistance>>8)&0xff;//(node_sensor_tof_mid>>8)&0xff;
+    len++; 
+    sensor_data[len+2]=tTofData.uiMidDistance&0xff;//node_sensor_tof_mid&0xff;
+    len++;
+    sensor_data[len+2]=0x6;
+    len++; // tof right
+    sensor_data[len+2]=0x2;
+    len++;  // len:2 bytes
+    sensor_data[len+2]=(tTofData.uiRightDistance>>8)&0xff;//(node_sensor_tof_right>>8)&0xff;
+    len++; 
+    sensor_data[len+2]=tTofData.uiRightDistance&0xff;//node_sensor_tof_right&0xff;
+    len++;
+    #endif // NODE_SENSOR_TOF
+
+    #if NODE_SENSOR_MICROPHONE
+    sensor_data[len+2]=0x7;
+    len++;  // microphone
+    sensor_data[len+2]=0x1;
+    len++; // len:1 bytes
+    (node_sensor_microphone > 0) ? sensor_data[len+2]=1 : sensor_data[len+2]=0;
+    len++;
+    node_sensor_microphone = 0;
+    #endif // NODE_SENSOR_MICROPHONE
+    
     #if NODE_SENSOR_TEMP_HUM_ENABLE
     sensor_data[len+2]=0x1;
     len++; // temperature
@@ -506,8 +890,8 @@ unsigned char node_get_sensor_data (char *data)
     sensor_data[len+2]=gpio0;
     len++;
     #endif
-    
-    #if ((!NODE_SENSOR_TEMP_HUM_ENABLE)&&(!NODE_SENSOR_CO2_VOC_ENABLE)&&(!NODE_GPIO_ENABLE))
+
+    #if ((!NODE_SENSOR_TEMP_HUM_ENABLE)&&(!NODE_SENSOR_CO2_VOC_ENABLE)&&(!NODE_SENSOR_DI_TEMPERATURE)&&(!NODE_SENSOR_MICROPHONE)&&(!NODE_SENSOR_TOF)&&(!NODE_GPIO_ENABLE))
     return 0;
     #else
     //header
@@ -718,6 +1102,15 @@ int main ()
     #if NODE_SENSOR_CO2_VOC_ENABLE
     Thread *p_node_sensor_co2_thread;
     #endif
+    #if NODE_SENSOR_DI_TEMPERATURE
+    Thread *p_node_sensor_di_thread;
+    #endif
+    #if NODE_SENSOR_MICROPHONE
+    Thread *p_node_sensor_microphone_thread;
+    #endif
+    #if NODE_SENSOR_TOF
+    Thread *p_node_sensor_tof_thread;
+    #endif
     
     /* Init carrier board, must be first step */
     nodeApiInitCarrierBoard();
@@ -730,13 +1123,6 @@ int main ()
 	nodeApiInit(&debug_serial, &debug_serial);
 	#endif
 
-    #if NODE_SENSOR_TEMP_HUM_ENABLE
-    p_node_sensor_temp_hum_thread=new Thread(node_sensor_temp_hum_thread);
-    #endif
-    #if NODE_SENSOR_CO2_VOC_ENABLE
-    p_node_sensor_co2_thread=new Thread(node_sensor_voc_co2_thread);
-    #endif
-    
     /* Display version information */
     NODE_DEBUG("\f");
     NODE_DEBUG("\t\t *************************************************\n\r");
@@ -767,7 +1153,7 @@ int main ()
     /* Apply to module */
     nodeApiApplyCfg();
 
-    node_get_config();  
+    node_get_config();   
 
 	#if NODE_DEEP_SLEEP_MODE_SUPPORT
 	if(node_op_mode==1)
@@ -775,14 +1161,32 @@ int main ()
 		p_lpin=new DigitalOut(PA_15,0);
 
     }
-    #endif      
+    #endif
+
+    #if NODE_SENSOR_DI_TEMPERATURE
+    node_sensor_di_int();
+    p_node_sensor_di_thread=new Thread(node_sensor_di_thread);
+    #endif
+    #if NODE_SENSOR_MICROPHONE
+    p_node_sensor_microphone_thread=new Thread(node_sensor_microphone_thread);
+    #endif
+    #if NODE_SENSOR_TEMP_HUM_ENABLE
+    p_node_sensor_temp_hum_thread=new Thread(node_sensor_temp_hum_thread);
+    #endif
+    #if NODE_SENSOR_CO2_VOC_ENABLE
+    p_node_sensor_co2_thread=new Thread(node_sensor_voc_co2_thread);
+    #endif
+    #if NODE_SENSOR_TOF
+    p_node_sensor_tof_thread=new Thread(node_sensor_tof_thread);
+    #endif
         
     /* Start Lora */
     nodeApiStartLora(); 
         
-    Thread::wait(1000);
+    Thread::wait(1000); 
 
-    #if (!NODE_SENSOR_TEMP_HUM_ENABLE)
+    //#if (!NODE_SENSOR_TEMP_HUM_ENABLE)
+    #if 0
     while(1)
     {
         Thread::wait(1000);
