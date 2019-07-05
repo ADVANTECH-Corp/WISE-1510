@@ -47,7 +47,7 @@
 
 #if SENSOR_MAX4466
 #define NODE_SENSOR_MICROPHONE  1
-#define MICROPHONE_THRESHOLD    3.00f
+#define MICROPHONE_THRESHOLD    100.00f
 static MAX4466 mic(ADC0);
 #endif
 
@@ -334,12 +334,34 @@ static void node_sensor_di_thread(void const *args)
 #endif // NODE_SENSOR_DI_TEMPERATURE
 
 #if NODE_SENSOR_MICROPHONE
+/** @brief table about voltage to db
+ *   0.2 -> 100 db
+ *   1.0 -> 110 db
+ *   4.5 -> 117.5 db
+ */
+static double level_to_db(double _dLevel)
+{
+    double db;
+
+    if(_dLevel < 0.20f) {
+        db = 80.00f;
+    }
+    else if(_dLevel >= 0.20f && _dLevel <= 1.00f) {
+        db = (12.50f * _dLevel) + 97.50f;
+    }
+    else {
+        db = (2.14f * _dLevel) + 107.86f;
+    }
+
+    return db;
+}
+
 static void node_sensor_microphone_thread(void const *args)
 {
         int i;
         int cnt=0;
         unsigned int cnt2=0;
-        double num=0;
+        double num=0, db=0;
 
         cnt = 60; // Update sensor data every 60 seconds
         mic.volume_indicator();
@@ -349,21 +371,23 @@ static void node_sensor_microphone_thread(void const *args)
                 gtTofMutex.lock();
                 for(i=0; i<10; i++) {
                     num = mic.sound_level();
-                    //num = mic.sound();
-                    if(i < 5) continue;
-#if 1                    
+                    db = level_to_db(num);
+
+                    // Loop continue for stable with microphone
+                    if(i < 5) continue;                 
+
                     if(isnan(num)) {
                         NODE_DEBUG("NAN\n\r");
                     } 
                     else {
-                        NODE_DEBUG("[%08d] Level is %f\n\r", cnt2, num);
-                        if(num > MICROPHONE_THRESHOLD) {
+                        NODE_DEBUG("[%08d] Level is %f, db is %f\n\r", cnt2, num, db);
+                        //if(num > MICROPHONE_THRESHOLD) {
+                        if(db > MICROPHONE_THRESHOLD) {
                             node_sensor_microphone++;
                         }
                         NODE_DEBUG("[%08d] Microphone cnt:%d\n\r", cnt2, node_sensor_microphone);
                         break;
-                    }
-#endif                    
+                    }                  
                     Thread::wait(10);
                 }
                 gtTofMutex.unlock();
@@ -495,21 +519,7 @@ static void node_sensor_tof_thread(void const *args)
             tData.uiMidDistance     = distance2;
             tData.uiRightDistance   = distance3;
             SetTofData(&tData);
-            //wait(0.5);
-            //Thread::wait(10);
-#if 0 // For debug 
-            GetTofAvgData(&tOutData);
-            NODE_DEBUG("Avg: Left:%6ld, Mid:%6ld, Right:%6ld\n\r",
-                            tOutData.uiLeftDistance,
-                            tOutData.uiMidDistance,
-                            tOutData.uiRightDistance);
-            GetTofOneData(&tOutData);
-            NODE_DEBUG("One: Left:%6ld, Mid:%6ld, Right:%6ld\n\r",
-                            tOutData.uiLeftDistance,
-                            tOutData.uiMidDistance,
-                            tOutData.uiRightDistance);
-    
-#endif // end 1
+
             cnt = 0;
             cnt2++;
         }
@@ -839,7 +849,7 @@ unsigned char node_get_sensor_data (char *data)
     len++;  // microphone
     sensor_data[len+2]=0x1;
     len++; // len:1 bytes
-    (node_sensor_microphone > 0) ? sensor_data[len+2]=1 : sensor_data[len+2]=0;
+    (node_sensor_microphone > 0) ? sensor_data[len+2]=0 : sensor_data[len+2]=1;
     len++;
     node_sensor_microphone = 0;
     #endif // NODE_SENSOR_MICROPHONE
