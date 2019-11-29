@@ -21,7 +21,12 @@
 #include "VL53L0X.h"
 #endif
 
+#if !SENSOR_DS1820_CEMENT
 #define WISE_VERSION                  "1510S10MMV0106-Kolon-7sensors"
+#else
+#define WISE_VERSION                  "1510S10MMV0106-Kolon-cement"
+#endif
+
 #define NODE_AUTOGEN_APPKEY
 
 #define NODE_SENSOR_TEMP_HUM_ENABLE    0    ///< Enable or disable TEMP/HUM sensor report, default disable
@@ -39,10 +44,21 @@
 
 #if SENSOR_DS1820
 #define NODE_SENSOR_DI_TEMPERATURE     1
-#define MAX_SENSOR_DI_TEMPERATURE_NUM  3
+#if SENSOR_DS1820_CEMENT
+#define SENSOR1_IO_PIN  GPIO0
+#define SENSOR2_IO_PIN  GPIO1
+#define SENSOR3_IO_PIN  GPIO2
+#define SENSOR4_IO_PIN  GPIO3
+#define MAX_SENSOR_DI_TEMPERATURE_NUM  4
+#define TEMP_UPDATE_PERIOD  20 // second
+AnalogIn adc0(ADC0);
+#else
 #define SENSOR1_IO_PIN  GPIO3
 #define SENSOR2_IO_PIN  GPIO2
 #define SENSOR3_IO_PIN  GPIO0
+#define MAX_SENSOR_DI_TEMPERATURE_NUM  3
+#define TEMP_UPDATE_PERIOD  120 // second
+#endif
 #endif
 
 #if SENSOR_MAX4466
@@ -79,9 +95,14 @@ RawSerial debug_serial(PA_9, PA_10);	///< Debug serial port
 #endif
 
 #if NODE_GPIO_ENABLE
+#if SENSOR_DS1820_CEMENT
+///< Control downlink GPIO4
+static DigitalOut led(PB_0);
+#else
 ///< Control downlink GPIO1
 static DigitalOut led(PC_8);//IO01
 //static DigitalOut led(GPIO3);//IO01
+#endif
 static unsigned int gpio0;
 #else
 DigitalIn gp6(PC_8); ///PC8 consumes power if not declare
@@ -129,6 +150,9 @@ static  unsigned int node_sensor_voc_co2=0; ///<Voc and CO2 sensor global
 #endif
 #if NODE_SENSOR_DI_TEMPERATURE
 static int g_aiAdcTemperatureData[MAX_SENSOR_DI_TEMPERATURE_NUM];
+#if SENSOR_DS1820_CEMENT
+static int g_aiAdcBattery=0;
+#endif // SENSOR_DS1820_CEMENT
 #endif
 #if NODE_SENSOR_MICROPHONE
 static unsigned int node_sensor_microphone=0;
@@ -281,9 +305,16 @@ static void node_sensor_temp_hum_thread(void const *args)
 #endif
 
 #if NODE_SENSOR_DI_TEMPERATURE
-DS1820  ds1820[MAX_SENSOR_DI_TEMPERATURE_NUM] = {DS1820(SENSOR1_IO_PIN), 
+DS1820  ds1820[MAX_SENSOR_DI_TEMPERATURE_NUM] = {
+                                                    DS1820(SENSOR1_IO_PIN), 
                                                     DS1820(SENSOR2_IO_PIN), 
-                                                    DS1820(SENSOR3_IO_PIN)};
+                                                    #if !SENSOR_DS1820_CEMENT
+                                                    DS1820(SENSOR3_IO_PIN)
+                                                    #else
+                                                    DS1820(SENSOR3_IO_PIN),
+                                                    DS1820(SENSOR4_IO_PIN)
+                                                    #endif
+                                                };
 static void node_sensor_di_int(void)
 {
         for(int i = 0; i < MAX_SENSOR_DI_TEMPERATURE_NUM; i++) {
@@ -306,10 +337,10 @@ static void node_sensor_di_thread(void const *args)
         unsigned int cnt2=0;
         float afData[MAX_SENSOR_DI_TEMPERATURE_NUM];
 
-        cnt = 120; // Update sensor data every 120 seconds
+        cnt = TEMP_UPDATE_PERIOD;
         while(1) 
         {
-            if(cnt >= 120) {
+            if(cnt >= TEMP_UPDATE_PERIOD) {
                 gtTofMutex.lock();
                 for(i = 0; i < MAX_SENSOR_DI_TEMPERATURE_NUM; i++) {
                     if(ds1820[i].isPresent()) {
@@ -317,12 +348,17 @@ static void node_sensor_di_thread(void const *args)
                         Thread::wait(1000);
                         afData[i] = ds1820[i].read();
                         g_aiAdcTemperatureData[i] = afData[i] * 100;
-                        //NODE_DEBUG("[%08d] temp%d = %3.1f, loratemp:%d\r\n",cnt2, i, afData[i], g_aiAdcTemperatureData[i]);     // read temperature
-                        //Thread::wait(2000);
+                        NODE_DEBUG("[%08d] temp%d = %3.1f, loratemp:%d\r\n",cnt2, i, afData[i], g_aiAdcTemperatureData[i]);     // read temperature
                     }
                 }
                 gtTofMutex.unlock();
-                //wait(1.0);  // let DS1820s complete the temperature conversion
+                
+                #if SENSOR_DS1820_CEMENT
+                g_aiAdcBattery = adc0.read() * 3.3 * 100;
+                //NODE_DEBUG("[%08d] adc: %.3f\r\n", cnt2, adc0.read() * 3.3);
+                NODE_DEBUG("[%08d] battery voltage: %d\r\n", cnt2, g_aiAdcBattery);
+                #endif
+                
                 cnt = 0;
                 cnt2++;
             }
@@ -808,6 +844,26 @@ unsigned char node_get_sensor_data (char *data)
     len++;
     sensor_data[len+2]=g_aiAdcTemperatureData[2]&0xff;
     len++;
+    #if SENSOR_DS1820_CEMENT
+    sensor_data[len+2]=0x4;
+    len++; // temperature4
+    sensor_data[len+2]=0x3;
+    len++;  // len:3 bytes
+    (g_aiAdcTemperatureData[3] > 0) ? sensor_data[len+2]=0x00 : sensor_data[len+2]=0xff;
+    len++; //0x0 is positive, 0xff is negative
+    sensor_data[len+2]=(g_aiAdcTemperatureData[3]>>8)&0xff;
+    len++;
+    sensor_data[len+2]=g_aiAdcTemperatureData[3]&0xff;
+    len++;
+    sensor_data[len+2]=0x5;
+    len++; // vol of battery
+    sensor_data[len+2]=0x2;
+    len++;  // len:2 bytes
+    sensor_data[len+2]=(g_aiAdcBattery>>8)&0xff;
+    len++;
+    sensor_data[len+2]=g_aiAdcBattery&0xff;
+    len++;
+    #endif // SENSOR_DS1820_CEMENT
     #endif // NODE_SENSOR_DI_TEMPERATURE
 
     #if NODE_SENSOR_TOF
@@ -959,8 +1015,8 @@ void node_state_loop()
                 {
                     time_t seconds = time(NULL);
             
-                    NODE_DEBUG("Time as seconds since January 1, 1970 = %d\n", seconds);
-                    NODE_DEBUG("Time as a basic string = %s", ctime(&seconds));
+                    NODE_DEBUG("Time as seconds since January 1, 1970 = %d\r\n", seconds);
+                    NODE_DEBUG("Time as a basic string = %s\r\n", ctime(&seconds));
                     
                 }
      
